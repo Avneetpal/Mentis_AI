@@ -1,0 +1,40 @@
+<!-- templates/results.html -->
+{% extends "base.html" %}
+
+{% block title %}Test Results{% endblock %}
+
+{% block content %}
+    <h2>Assessment Results</h2>
+    
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div style="background-color: #e0f7fa; padding: 20px; border-radius: 8px; margin-bottom: 25px;">
+        <h3>Your Predicted Coding Level:</h3>
+        <h1>{{ level }}</h1>
+        <p>This level is determined by your performance on Easy, Medium, and Hard questions over time.</p>
+    </div>
+
+    <h4>All Test Submissions:</h4>
+    {% if latest_results %}
+        <ul style="list-style-type: none; padding: 0;">
+        {% for result in latest_results %}
+            <li style="border-bottom: 1px solid #eee; padding: 10px 0;">
+                Question ID **{{ result.question_id }}** ({{ result.question.difficulty }} - {{ result.question.topic }}): 
+                Status: <strong>{% if result.is_correct %}Correct ✅{% else %}Incorrect ❌{% endif %}</strong>
+            </li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <p>No test results found. Please take the <a href="{{ url_for('take_test') }}">assessment</a> first.</p>
+    {% endif %}
+
+    <p style="margin-top: 30px;">Go to your dashboard to view personalized questions recommended for your **{{ level }}** level.</p>
+    
+    <a href="{{ url_for('dashboard') }}" style="display: inline-block; padding: 10px 15px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 4px;">Go to Dashboard for Practice</a>
+{% endblock %}

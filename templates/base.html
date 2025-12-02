@@ -1,0 +1,37 @@
+<!-- templates/base.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mentis_Ai - {% block title %}{% endblock %}</title>
+    <!-- CSS Link -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <header>
+        <div class="nav-content">
+            <a href="{{ url_for('index') }}" class="logo">Mentis_Ai</a>
+            <div class="nav-links">
+                <a href="{{ url_for('index') }}">Home</a>
+                {% if 'user_id' in session %}
+                    <a href="{{ url_for('dashboard') }}">Dashboard</a>
+                    <a href="{{ url_for('logout') }}" class="nav-btn">Logout</a>
+                {% else %}
+                    <a href="{{ url_for('login') }}">Login</a>
+                    <a href="{{ url_for('register') }}" class="nav-btn">Get Started</a>
+                {% endif %}
+            </div>
+        </div>
+    </header>
+    
+    <div class="container">
+        <!-- Main Content Injection -->
+        {% block content %}{% endblock %}
+    </div>
+
+    <footer>
+        <p>&copy; 2025 Mentis_Ai - Personalized Learning Platform</p>
+    </footer>
+</body>
+</html>

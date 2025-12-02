@@ -1,0 +1,102 @@
+<!-- templates/dashboard.html -->
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+    <div class="flash-messages">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash flash-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    <h2>Welcome back, {{ user.username }}!</h2>
+
+    <!-- User Level Card -->
+    <div class="card level-card">
+        <p style="margin: 0; color: #64748b; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px;">Current Proficiency</p>
+        <div style="display: flex; align-items: center; gap: 15px; margin-top: 10px;">
+            <h1 style="margin: 0; font-size: 2.5rem; color: #1e3a8a;">{{ user.level }}</h1>
+            <span class="level-badge level-{{ user.level | lower }}">Level</span>
+        </div>
+        
+        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+
+        <div class="action-group">
+            {% if is_ready_for_retest %}
+                <!-- Re-Test Available -->
+                <div>
+                    <p style="color: #059669; font-weight: 600; margin-bottom: 10px;">✅ You've completed your practice set!</p>
+                    <a href="{{ url_for('take_test') }}" class="btn btn-primary">Take Assessment &rarr;</a>
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Practice More</a>
+                </div>
+            {% else %}
+                <!-- Need more practice -->
+                <div>
+                    <p style="color: #64748b; margin-bottom: 10px;">Complete the recommended questions below to unlock the next assessment.</p>
+                    <a href="{{ url_for('take_test') }}" class="btn btn-primary">Take Assessment</a>
+                </div>
+            {% endif %}
+            
+            <a href="{{ url_for('results') }}" class="btn btn-secondary" style="margin-left: auto;">History</a>
+        </div>
+    </div>
+
+    <!-- Recommendations Section -->
+    <h3>Your Personalized Practice Plan</h3>
+    <p style="color: #64748b; margin-bottom: 20px;">Curated from LeetCode based on your <strong>{{ user.level }}</strong> skill gap.</p>
+    
+    <form method="POST" action="{{ url_for('mark_practice_done') }}">
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Problem</th>
+                        <th>Difficulty</th>
+                        <th>Topic</th>
+                        <th>Resource</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for q in recommendations %}
+                        <tr>
+                            <td><strong>{{ q.text }}</strong></td> 
+                            <td>
+                                <span class="difficulty-badge diff-{{ q.difficulty | lower }}">
+                                    {{ q.difficulty }}
+                                </span>
+                            </td>
+                            <td>{{ q.topic }}</td>
+                            <td>
+                                <a href="{{ q.leetcode_url }}" target="_blank" style="color: #2563eb; font-weight: 500;">Solve on LeetCode ↗</a>
+                            </td>
+                            <td>
+                                <label style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                                    {% if q.id in practiced_qids %}
+                                        <input type="checkbox" name="practiced_q_id" value="{{ q.id }}" checked>
+                                        <span style="color: #166534; font-weight: 600;">Done</span>
+                                    {% else %}
+                                        <input type="checkbox" name="practiced_q_id" value="{{ q.id }}">
+                                        <span style="color: #64748b;">Mark Done</span>
+                                    {% endif %}
+                                </label>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    {% if not recommendations %}
+                        <tr><td colspan="5" style="text-align: center; padding: 30px; color: #64748b;">No active recommendations. You are ready to level up!</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+        
+        <div style="margin-top: 20px; text-align: right;">
+            <button type="submit" class="btn btn-accent">Update Progress</button>
+        </div>
+    </form>
+{% endblock %}

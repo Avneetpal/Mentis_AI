@@ -1,0 +1,89 @@
+<!-- templates/test_page.html -->
+{% extends "base.html" %}
+
+{% block title %}Assessment{% endblock %}
+
+{% block content %}
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>Skill Assessment</h2>
+        <div id="timer-box" class="timer-container">
+            ⏱️ <span id="countdown">15:00</span>
+        </div>
+    </div>
+
+    <div class="flash-messages">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash flash-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    <form method="POST" action="{{ url_for('take_test') }}" id="assessment-form">
+        {% for question in questions %}
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+                    <h4 style="margin: 0;">Question {{ loop.index }}</h4>
+                    <span class="difficulty-badge diff-{{ question.difficulty | lower }}">{{ question.difficulty }}</span>
+                </div>
+                
+                <p style="font-size: 1.1rem; margin-bottom: 20px;">{{ question.text }}</p>
+                <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 10px;">Tag: {{ question.topic }}</p>
+                
+                <textarea 
+                    name="answer_{{ question.id }}" 
+                    rows="10" 
+                    placeholder="# Write your Python solution here..." 
+                    required></textarea>
+                
+                <input type="hidden" name="question_id_{{ question.id }}" value="{{ question.id }}">
+            </div>
+        {% endfor %}
+
+        <div style="text-align: right;">
+            <button type="submit" id="submit-button" class="btn btn-primary" style="padding: 15px 40px; font-size: 1.1rem;">Submit Assessment</button>
+        </div>
+        
+        {% if questions|length == 0 %}
+            <div class="card" style="text-align: center; color: #ef4444;">
+                <p>Assessment pool is currently empty. Please contact support or reset history.</p>
+            </div>
+        {% endif %}
+    </form>
+    
+    <script>
+        // Timer Logic
+        let timeInSeconds = 900; // 15 minutes
+        const countdownElement = document.getElementById('countdown');
+        const form = document.getElementById('assessment-form');
+        const timerBox = document.getElementById('timer-box');
+        
+        function updateTimer() {
+            const minutes = Math.floor(timeInSeconds / 60);
+            const seconds = timeInSeconds % 60;
+            
+            countdownElement.textContent = 
+                `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            // Warning color at 2 minutes
+            if (timeInSeconds <= 120) {
+                timerBox.style.color = '#dc2626';
+                timerBox.style.borderColor = '#dc2626';
+                timerBox.style.backgroundColor = '#fef2f2';
+            }
+            
+            if (timeInSeconds <= 0) {
+                clearInterval(timerInterval);
+                countdownElement.textContent = "00:00";
+                alert("Time is up! Submitting your answers now.");
+                form.submit();
+            } else {
+                timeInSeconds--;
+            }
+        }
+        
+        const timerInterval = setInterval(updateTimer, 1000);
+    </script>
+{% endblock %}

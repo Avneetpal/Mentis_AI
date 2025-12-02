@@ -1,0 +1,44 @@
+<!-- templates/index.html -->
+{% extends "base.html" %}
+
+{% block title %}Welcome{% endblock %}
+
+{% block content %}
+    <!-- Hero Section -->
+    <div class="hero-section">
+        <h1 class="hero-title">Master Data Structures & Algorithms</h1>
+        <p class="hero-subtitle">
+            Mentis_Ai analyzes your coding skills, predicts your level, and builds a personalized curriculum using real-world LeetCode challenges.
+        </p>
+        
+        <div class="hero-actions">
+            {% if 'user_id' in session %}
+                <a href="{{ url_for('dashboard') }}" class="btn btn-primary btn-lg">Go to Dashboard</a>
+            {% else %}
+                <a href="{{ url_for('register') }}" class="btn btn-primary btn-lg">Start Assessment</a>
+                <a href="{{ url_for('login') }}" class="btn btn-secondary btn-lg">Login</a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Features Section -->
+    <div class="features-container">
+        <div class="feature-card">
+            <div class="icon">🚀</div>
+            <h3>Smart Assessment</h3>
+            <p>Take a dynamic coding test. Our system adapts to ensure you never face the same set of questions twice.</p>
+        </div>
+
+        <div class="feature-card">
+            <div class="icon">📊</div>
+            <h3>AI Prediction</h3>
+            <p>Get an accurate proficiency rating (Beginner to Advanced) based on your performance on Easy, Medium, and Hard problems.</p>
+        </div>
+
+        <div class="feature-card">
+            <div class="icon">🎯</div>
+            <h3>Targeted Practice</h3>
+            <p>Don't waste time. Get a curated list of LeetCode problems specifically designed to bridge your skill gaps.</p>
+        </div>
+    </div>
+{% endblock %}
