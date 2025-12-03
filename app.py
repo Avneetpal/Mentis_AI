@@ -440,12 +440,21 @@ def mark_practice_done():
 
 # --- RUN THE APPLICATION ---
 
-if __name__ == '__main__':
+# --- RUN THE APPLICATION ---
+
+# This function runs once when the app starts (works for both Gunicorn and local)
+def initialize_database():
     with app.app_context():
-        # CRITICAL FIX: Create all tables on application startup
-        db.create_all()
-        
-        # Seed the question data after tables are created
-        seed_questions()
-        
+        try:
+            db.create_all()
+            print("Database tables created successfully.")
+            seed_questions()
+            print("Database seeded successfully.")
+        except Exception as e:
+            print(f"Error initializing database: {e}")
+
+# Run initialization immediately
+initialize_database()
+
+if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0')
