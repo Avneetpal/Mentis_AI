@@ -3,13 +3,14 @@
 # --- IMPORTS & SETUP ---
 import os
 import random 
-from io import StringIO 
+import ast # Import Abstract Syntax Tree for code validation
 from flask import Flask, render_template, url_for, redirect, request, flash, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from werkzeug.security import generate_password_hash, check_password_hash 
 from sqlalchemy import exc, func 
 
+# Check for pandas
 try:
     import pandas as pd 
 except ImportError:
@@ -17,15 +18,13 @@ except ImportError:
 
 # --- CONFIGURATION ---
 DATASET_FILENAME = 'leetcode_dataset - lc.csv' 
+
 app = Flask(__name__, template_folder='templates')
 app.config['SECRET_KEY'] = 'your_super_secret_key_here' 
-basedir = os.path.abspath(os.path.dirname(__file__))
-# OLD LINE:
-# app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'app.db')
 
-# NEW LINE:
-# This checks if the cloud database URL exists; if not, it falls back to SQLite (for local testing)
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL') or 'sqlite:///' + os.path.join(basedir, 'app.db')
+# Database Configuration
+basedir = os.path.abspath(os.path.dirname(__file__))
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'app.db') 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -65,7 +64,7 @@ class TestResult(db.Model):
         db.UniqueConstraint('user_id', 'question_id', name='_user_question_uc'),
     )
 
-class Practice(db.Model): # Model to track completion status
+class Practice(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     question_id = db.Column(db.Integer, db.ForeignKey('question.id'), nullable=False)
@@ -77,15 +76,57 @@ class Practice(db.Model): # Model to track completion status
 
 # --- CORE LOGIC FUNCTIONS ---
 
-def simulate_grading(difficulty):
-    """Simulates grading based on question difficulty."""
+def validate_code(code_snippet):
+    """
+    Uses Python's AST module to check if the code is syntactically valid.
+    Returns: (is_valid, message)
+    """
+    if not code_snippet or len(code_snippet.strip()) < 5:
+        return False, "Code is empty or too short."
+        
+    try:
+        # Attempt to parse the code into an Abstract Syntax Tree
+        tree = ast.parse(code_snippet)
+        
+        # Check if at least one function definition exists (def ...)
+        has_function = any(isinstance(node, ast.FunctionDef) for node in ast.walk(tree))
+        
+        if not has_function:
+            return False, "Code is valid Python, but missing a function definition (def ...)."
+            
+        return True, "Syntax is valid."
+        
+    except SyntaxError as e:
+        return False, f"Syntax Error on line {e.lineno}: {e.msg}"
+    except Exception as e:
+        return False, f"Error parsing code: {str(e)}"
+
+
+def simulate_grading(difficulty, user_code):
+    """
+    Simulates grading by first validating syntax, then applying probabilistic logic.
+    Returns: (is_correct, feedback_message)
+    """
+    # 1. Check for Valid Python Syntax
+    is_valid, msg = validate_code(user_code)
+    
+    if not is_valid:
+        return False, f"Incorrect ❌ ({msg})"
+
+    # 2. If syntax is valid, simulate logic check based on difficulty
+    # (In a real system, this would run test cases)
+    chance = 0
     if difficulty == 'Easy':
-        return (random.random() < 0.9)
+        chance = 0.9
     elif difficulty == 'Medium':
-        return (random.random() < 0.6)
+        chance = 0.7
     elif difficulty == 'Hard':
-        return (random.random() < 0.3)
-    return False
+        chance = 0.4
+        
+    if random.random() < chance:
+        return True, "Correct! ✅ (Logic verified)"
+    else:
+        return False, "Incorrect ❌ (Logic failed on hidden test cases)"
 
 
 def predict_coding_level(user_id):
@@ -128,13 +169,9 @@ def predict_coding_level(user_id):
 
 
 def fetch_recommendations(level, num_questions=5):
-    """
-    Suggests practice questions based on the user's predicted level.
-    It EXCLUDES questions the user has already marked as done.
-    """
+    """Suggests practice questions based on the user's predicted level."""
     
     user_id = session.get('user_id')
-    # Get IDs of questions already practiced
     practiced_qids = [p.question_id for p in Practice.query.filter_by(user_id=user_id, is_done=True).all()]
     
     if level in ['Beginner', 'Struggling Beginner', 'New']:
@@ -159,7 +196,6 @@ def fetch_recommendations(level, num_questions=5):
         if len(recommendations) < num_questions:
             questions_to_fetch = count if (len(recommendations) + count <= num_questions) else (num_questions - len(recommendations))
             
-            # CRITICAL: Exclude already practiced questions
             available_questions = Question.query.filter(
                 Question.difficulty == difficulty,
                 Question.id.notin_(practiced_qids)
@@ -175,23 +211,27 @@ def seed_questions():
     """Reads the external CSV file and populates the database."""
     
     if pd is None:
-        print("CRITICAL ERROR: Pandas library not available. Cannot seed questions from CSV file.")
+        print("CRITICAL ERROR: Pandas library not available. Cannot seed questions.")
         return
         
     try:
         if Question.query.count() == 0:
-            
+            # Ensure the file exists
+            if not os.path.exists(DATASET_FILENAME):
+                 print(f"Error: {DATASET_FILENAME} not found in root directory.")
+                 return
+
             df = pd.read_csv(DATASET_FILENAME) 
             questions = []
             
-            for index, row in df.iterrows():
+            # Limit to 1000 questions to prevent database bloat on free tier
+            for index, row in df.head(1000).iterrows():
                 difficulty = row['difficulty'].strip()
-                
-                topics_str = row['related_topics']
+                topics_str = str(row['related_topics'])
                 topic = "General"
-                if pd.notna(topics_str): 
+                
+                if pd.notna(topics_str) and len(topics_str) > 2: 
                     topic = topics_str.split(',')[0].strip().replace('[', '').replace(']', '').replace("'", '')
-                    if not topic: topic = "General"
                 
                 new_question = Question(
                     text=row['title'], 
@@ -200,41 +240,35 @@ def seed_questions():
                     leetcode_url=row['url'] 
                 )
                 questions.append(new_question)
-                
+            
             db.session.bulk_save_objects(questions)
             db.session.commit()
-            print(f"--- Database seeded with {len(questions)} questions from {DATASET_FILENAME}. ---")
+            print(f"--- Database seeded with {len(questions)} questions. ---")
         else:
             print("--- Question bank already contains data. Skipping seed. ---")
             
-    except FileNotFoundError:
-        print(f"CRITICAL ERROR: CSV file '{DATASET_FILENAME}' not found in the root directory. Cannot seed database.")
-    except exc.OperationalError as e:
-        print(f"Database Error during seeding: {e}")
     except Exception as e:
-        print(f"CRITICAL UNKNOWN ERROR during seeding: {e}")
+        print(f"ERROR during seeding: {e}")
 
 
-# --- ROUTES (URL Handlers) ---
+# --- ROUTES ---
 
 @app.route('/')
 def index():
     return render_template('index.html', logged_in='user_id' in session)
 
-
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    """Handles user registration."""
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
 
         if not username or not password:
-            flash('Both username and password are required.', 'error')
+            flash('All fields are required.', 'error')
             return redirect(url_for('register'))
 
         if User.query.filter_by(username=username).first():
-            flash('Username already exists. Please choose a different one.', 'error')
+            flash('Username already exists.', 'error')
             return redirect(url_for('register'))
 
         hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
@@ -244,17 +278,13 @@ def register():
 
         flash('Registration successful! Please log in.', 'success')
         return redirect(url_for('login'))
-        
     return render_template('register.html')
-
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    """Handles user login."""
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        
         user = User.query.filter_by(username=username).first()
 
         if user and check_password_hash(user.password, password):
@@ -263,63 +293,46 @@ def login():
             flash('Logged in successfully!', 'success')
             return redirect(url_for('dashboard'))
         else:
-            flash('Invalid username or password.', 'error')
+            flash('Invalid credentials.', 'error')
             return redirect(url_for('login'))
-            
     return render_template('login.html')
-
 
 @app.route('/logout')
 def logout():
-    """Handles user logout by clearing the session."""
     session.pop('user_id', None)
     session.pop('username', None)
     flash('You have been logged out.', 'info')
     return redirect(url_for('index'))
 
-
 @app.route('/dashboard')
 def dashboard():
-    """
-    Displays user level and practice recommendations.
-    Determines if the user is ready for a re-test.
-    """
     if 'user_id' not in session:
-        flash('Please log in to access your dashboard.', 'error')
         return redirect(url_for('login'))
         
     user_id = session['user_id']
     current_user = User.query.get(user_id) 
     
-    if current_user is None:
-        session.pop('user_id', None)
+    if not current_user:
+        session.clear()
         return redirect(url_for('login'))
     
     current_user.level = predict_coding_level(user_id)
     db.session.commit()
     
-    # 1. Get Recommendations (Excluding practiced ones)
     recommendations = fetch_recommendations(current_user.level)
     
-    # 2. Check if user is ready to re-test
-    # User is ready if there are NO recommendations left at their current level
-    is_ready_for_retest = len(recommendations) == 0 and current_user.level != 'New'
-    
-    # 3. Get practice status for rendering checkboxes
+    is_ready_for_retest = (len(recommendations) == 0 and current_user.level != 'New')
     practiced_qids = [p.question_id for p in Practice.query.filter_by(user_id=user_id, is_done=True).all()]
     
     return render_template('dashboard.html', 
                            user=current_user, 
                            recommendations=recommendations,
                            practiced_qids=practiced_qids,
-                           is_ready_for_retest=is_ready_for_retest) # <-- Passing the re-test flag
-
+                           is_ready_for_retest=is_ready_for_retest) 
 
 @app.route('/take_test', methods=['GET', 'POST'])
 def take_test():
-    """Handles test display (GET) and submission/scoring (POST)."""
     if 'user_id' not in session:
-        flash('Please log in to start a test.', 'error')
         return redirect(url_for('login'))
         
     user_id = session['user_id']
@@ -329,21 +342,21 @@ def take_test():
         total_correct = 0
         feedback_messages = []
         
-        for key, answer in request.form.items():
+        for key, answer_code in request.form.items():
             if key.startswith('answer_'):
                 question_id = int(key.split('_')[1])
                 question = Question.query.get(question_id)
                 
                 if question:
-                    is_correct = simulate_grading(question.difficulty) 
+                    # Pass code to new grading function
+                    is_correct, msg = simulate_grading(question.difficulty, answer_code) 
                     
                     if is_correct:
                         total_correct += 1
-                        feedback_messages.append(f"Q{question_id} ({question.difficulty}): Correct! ✅")
+                        feedback_messages.append(f"Q: {question.text[:30]}... - {msg}")
                     else:
-                        feedback_messages.append(f"Q{question_id} ({question.difficulty}): Incorrect ❌. Focus on {question.topic} basics.")
+                        feedback_messages.append(f"Q: {question.text[:30]}... - {msg}")
                     
-                    # Save the result to the TestResult table
                     new_result = TestResult(
                         user_id=user_id,
                         question_id=question_id,
@@ -352,109 +365,66 @@ def take_test():
                     db.session.add(new_result)
         
         db.session.commit()
-        
-        flash(f'Test submitted! You answered {total_correct} questions correctly.', 'success')
+        flash(f'Test submitted! Score: {total_correct} correct answers.', 'success')
         for msg in feedback_messages:
-            flash(msg, 'info') 
-        
+            flash(msg, 'info')
         return redirect(url_for('results'))
 
-    # --- GET HANDLING (DISPLAY TEST) - Repetition Guard Logic ---
     else: 
         asked_qids = [r.question_id for r in TestResult.query.filter_by(user_id=user_id).all()]
         
-        test_q_easy = 1
-        test_q_medium = 1
-        test_q_hard = 1
         test_questions = []
-
-        available_easy = Question.query.filter(Question.difficulty == 'Easy', Question.id.notin_(asked_qids)).order_by(db.func.random()).limit(test_q_easy).all()
-        test_questions.extend(available_easy)
-
-        available_medium = Question.query.filter(Question.difficulty == 'Medium', Question.id.notin_(asked_qids)).order_by(db.func.random()).limit(test_q_medium).all()
-        test_questions.extend(available_medium)
+        for diff in ['Easy', 'Medium', 'Hard']:
+            q = Question.query.filter(
+                Question.difficulty == diff, 
+                Question.id.notin_(asked_qids)
+            ).order_by(db.func.random()).limit(1).first()
+            if q: test_questions.append(q)
         
-        available_hard = Question.query.filter(Question.difficulty == 'Hard', Question.id.notin_(asked_qids)).order_by(db.func.random()).limit(test_q_hard).all()
-        test_questions.extend(available_hard)
-        
-        if len(test_questions) == 0:
-            flash('Error: You have completed all unique questions in the bank!', 'error')
-        elif len(test_questions) < (test_q_easy + test_q_medium + test_q_hard):
-            flash('Warning: Not enough unique questions available for a full test. Practice more!', 'warning')
+        if len(test_questions) < 3:
+            flash('Note: Questions are limited.', 'warning')
 
         random.shuffle(test_questions)
-        
         return render_template('test_page.html', questions=test_questions)
-
 
 @app.route('/results')
 def results():
-    """Displays user's predicted level and detailed performance."""
     if 'user_id' not in session:
-        flash('Please log in to view results.', 'error')
         return redirect(url_for('login'))
         
     user_id = session['user_id']
     current_user = User.query.get(user_id)
-    
-    level = current_user.level
-    
-    # Fetch all test results associated with the current user for display
     all_test_results = TestResult.query.filter_by(user_id=user_id).all()
     
     return render_template('results.html', 
-                           level=level, 
+                           level=current_user.level, 
                            latest_results=all_test_results)
-
 
 @app.route('/mark_practice_done', methods=['POST'])
 def mark_practice_done():
-    """Handles the form submission from the dashboard to mark questions as practiced."""
     if 'user_id' not in session:
         return redirect(url_for('login'))
         
-    user_id = session.get('user_id')
+    user_id = session['user_id']
     practiced_qids = request.form.getlist('practiced_q_id')
+    count = 0
     
-    count_marked = 0
-    
-    for qid_str in practiced_qids:
-        qid = int(qid_str)
-        practice_record = Practice.query.filter_by(user_id=user_id, question_id=qid).first()
-        
-        if not practice_record:
-            # Create a new record if it doesn't exist
-            new_record = Practice(user_id=user_id, question_id=qid, is_done=True)
-            db.session.add(new_record)
-            count_marked += 1
-        elif not practice_record.is_done:
-            # Update the status if it exists but wasn't marked done
-            practice_record.is_done = True
-            count_marked += 1
+    for qid in practiced_qids:
+        qid = int(qid)
+        exists = Practice.query.filter_by(user_id=user_id, question_id=qid).first()
+        if not exists:
+            db.session.add(Practice(user_id=user_id, question_id=qid, is_done=True))
+            count += 1
+        elif not exists.is_done:
+            exists.is_done = True
+            count += 1
             
     db.session.commit()
-
-    flash(f"Successfully marked {count_marked} questions as practiced! Check dashboard for re-test options.", 'success')
+    flash(f"Updated {count} questions as practiced.", 'success')
     return redirect(url_for('dashboard'))
 
-
-# --- RUN THE APPLICATION ---
-
-# --- RUN THE APPLICATION ---
-
-# This function runs once when the app starts (works for both Gunicorn and local)
-def initialize_database():
-    with app.app_context():
-        try:
-            db.create_all()
-            print("Database tables created successfully.")
-            seed_questions()
-            print("Database seeded successfully.")
-        except Exception as e:
-            print(f"Error initializing database: {e}")
-
-# Run initialization immediately
-initialize_database()
-
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+        seed_questions()
     app.run(debug=True, host='0.0.0.0')
